@@ -9,8 +9,10 @@ A secure, event-driven full-stack Next.js 16 (App Router) automation web app and
    - **Signature Verification**: Verifies HMAC-SHA256 signatures using a timing-safe buffer comparison (`crypto.timingSafeEqual`) to defend against timing attacks and forgery.
    - **Idempotency**: Prevents double-processing of duplicate deliveries via unique `X-GitHub-Delivery` ID logging.
    - **Durability**: Webhook payloads are persisted immediately in a `"received"` state before downstream action execution (preventing data loss if GitHub writeback or Slack fails).
-3. **Fault-Tolerant Retries**: A cron route (`/api/cron/retry-failed`) executes periodically to retry failed executions using exponential backoff.
-4. **Interactive Dashboard**: A glassmorphic dark-theme UI to connect repositories, edit automation match rules, and inspect live webhook logs with their execution states.
+3. **Structured Ingestion Logging**: Emits consistent JSON logs (`timestamp`, `deliveryId`, `eventType`, `status`, `message`, `error`) at each processing phase to simplify Vercel function log inspections.
+4. **Interactive Dashboard**: A glassmorphic dark-theme UI to connect repositories, create/edit/delete match rules, and inspect live webhook logs with their execution states, retry counts, errors, and AI insights.
+5. **Gemini AI Triage**: When configured, incoming issues and PRs are sent to **Gemini 1.5 Flash** to suggest a label classification and a one-sentence summary. These are logged in the database, shown on the dashboard, and appended to Slack notifications.
+6. **Fault-Tolerant Retries**: A cron route (`/api/cron/retry-failed`) executes periodically to retry failed executions using exponential backoff.
 
 ---
 
@@ -20,6 +22,7 @@ A secure, event-driven full-stack Next.js 16 (App Router) automation web app and
 - **Database**: Postgres on Neon, accessed via Prisma ORM
 - **Authentication**: Auth.js (NextAuth) v5 with GitHub Provider
 - **GitHub API**: Octokit
+- **AI Engine**: Google Gemini (via AI Studio API)
 - **Styling**: Vanilla CSS (CSS Modules)
 - **Deployment**: Vercel & Vercel Cron
 
@@ -43,6 +46,10 @@ AUTH_GITHUB_SECRET="your_github_oauth_client_secret"
 GITHUB_WEBHOOK_SECRET="your_custom_webhook_secret_key"
 SLACK_WEBHOOK_URL="your_slack_incoming_webhook_url"
 CRON_SECRET="your_cron_secret_for_retry_protection"
+NEXTAUTH_URL="http://localhost:3000"
+
+# Optional Gemini Triage
+GEMINI_API_KEY="your_google_gemini_api_key_here"
 ```
 
 ---
@@ -84,6 +91,7 @@ CRON_SECRET="your_cron_secret_for_retry_protection"
    npx vercel env add GITHUB_WEBHOOK_SECRET
    npx vercel env add SLACK_WEBHOOK_URL
    npx vercel env add CRON_SECRET
+   npx vercel env add GEMINI_API_KEY
    ```
 3. Deploy the application:
    ```bash
