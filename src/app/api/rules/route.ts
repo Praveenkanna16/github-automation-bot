@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const ruleSchema = z.object({
-  id: z.string().optional(),
+  id: z.string().nullable().optional(),
   repoId: z.string(),
   matchField: z.enum(["title", "body", "branch", "author", "aiLabel"]),
   matchValue: z.string().min(1, "Match keyword is required"),
@@ -58,7 +58,15 @@ export async function POST(req: Request) {
     const body = await req.json();
     const result = ruleSchema.safeParse(body);
     if (!result.success) {
-      return NextResponse.json({ error: result.error.issues[0].message }, { status: 400 });
+      const firstIssue = result.error.issues[0];
+      const friendlyError = `Invalid input on "${firstIssue.path.join(".")}": ${firstIssue.message}`;
+      return NextResponse.json({
+        error: friendlyError,
+        issues: result.error.issues.map(issue => ({
+          path: issue.path,
+          message: issue.message,
+        }))
+      }, { status: 400 });
     }
 
     const { repoId, matchField, matchValue, eventType, action, label, comment, slackMessageTemplate } = result.data;
@@ -83,9 +91,9 @@ export async function POST(req: Request) {
         matchValue,
         eventType,
         action,
-        label,
-        comment,
-        slackMessageTemplate,
+        label: label || null,
+        comment: comment || null,
+        slackMessageTemplate: slackMessageTemplate || null,
         enabled: true,
       },
     });
@@ -106,7 +114,15 @@ export async function PUT(req: Request) {
     const body = await req.json();
     const result = ruleSchema.safeParse(body);
     if (!result.success) {
-      return NextResponse.json({ error: result.error.issues[0].message }, { status: 400 });
+      const firstIssue = result.error.issues[0];
+      const friendlyError = `Invalid input on "${firstIssue.path.join(".")}": ${firstIssue.message}`;
+      return NextResponse.json({
+        error: friendlyError,
+        issues: result.error.issues.map(issue => ({
+          path: issue.path,
+          message: issue.message,
+        }))
+      }, { status: 400 });
     }
 
     const { id, matchField, matchValue, eventType, action, label, comment, slackMessageTemplate, enabled } = result.data;
@@ -125,9 +141,9 @@ export async function PUT(req: Request) {
         matchValue,
         eventType,
         action,
-        label,
-        comment,
-        slackMessageTemplate,
+        label: label || null,
+        comment: comment || null,
+        slackMessageTemplate: slackMessageTemplate || null,
         enabled: enabled !== undefined ? enabled : true,
       },
     });

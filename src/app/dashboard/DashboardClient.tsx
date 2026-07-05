@@ -563,7 +563,12 @@ export default function DashboardClient({
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save rule");
+      if (!res.ok) {
+        const errorMsg = data.issues
+          ? data.issues.map((i: any) => `Path "${i.path.join(".")}": ${i.message}`).join(", ")
+          : (data.error || "Failed to save rule");
+        throw new Error(errorMsg);
+      }
       if (editingRuleId) {
         setRules(prev => prev.map(r => r.id === data.id ? data : r));
         addToast("success", "Rule updated");
