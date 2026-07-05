@@ -103,6 +103,8 @@ model WebhookEvent {
   error       String?       // error message if failed
   retryCount  Int           @default(0)
   nextRetryAt DateTime?
+  aiSummary   String?
+  aiLabel     String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 

@@ -1,6 +1,18 @@
 import { prisma } from "@/lib/db";
 import { Octokit } from "octokit";
 
+// Consistent structured JSON Logger helper
+function logStep(deliveryId: string, eventType: string, status: string, message: string, extra = {}) {
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    deliveryId,
+    eventType,
+    status,
+    message,
+    ...extra
+  }));
+}
+
 export async function processWebhookEvent(eventId: string): Promise<void> {
   const event = await prisma.webhookEvent.findUnique({
     where: { id: eventId },
@@ -10,6 +22,8 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
   if (!event) {
     throw new Error(`Event with ID ${eventId} not found`);
   }
+
+  logStep(event.deliveryId, event.eventType, "processing", `Started processing event ID: ${event.id}`);
 
   // Update status to processing
   await prisma.webhookEvent.update({
@@ -22,16 +36,71 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
     const eventType = event.eventType;
     const connectedRepo = event.repo;
 
+    // 1. Optional Gemini AI Triage Step (Phase E)
+    const geminiKey = process.env.GEMINI_API_KEY;
+    let aiLabel: string | null = null;
+    let aiSummary: string | null = null;
+
+    if (geminiKey && (eventType === "issues" || eventType === "pull_request")) {
+      try {
+        logStep(event.deliveryId, eventType, "processing", "Initiating Gemini AI triage classification");
+        const title = payload.issue?.title || payload.pull_request?.title || "";
+        const body = payload.issue?.body || payload.pull_request?.body || "";
+
+        const prompt = `Analyze the following GitHub issue/pull request. Return a JSON object with two fields: 'suggestedLabel' (a single lowercase word like bug, docs, feature, enhancement, question) and 'summary' (a concise one-sentence summary under 100 characters). Output only the raw JSON, no markdown blocks.
+Title: ${title}
+Body: ${body}`;
+
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{ text: prompt }]
+              }],
+              generationConfig: {
+                responseMimeType: "application/json"
+              }
+            })
+          }
+        );
+
+        if (geminiRes.ok) {
+          const resData = await geminiRes.json();
+          const textResponse = resData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+          const parsed = JSON.parse(textResponse.trim());
+          aiLabel = parsed.suggestedLabel || null;
+          aiSummary = parsed.summary || null;
+          logStep(event.deliveryId, eventType, "processing", "Gemini AI triage analysis succeeded", { aiLabel, aiSummary });
+        } else {
+          const errText = await geminiRes.text();
+          logStep(event.deliveryId, eventType, "processing", "Gemini AI API call failed", { response: errText });
+        }
+      } catch (geminiError: any) {
+        logStep(event.deliveryId, eventType, "processing", "Failed to fetch triage analysis from Gemini", { error: geminiError.message || String(geminiError) });
+      }
+    }
+
     // Fetch the rules configured for this repo
     const rules = await prisma.rule.findMany({
       where: { repoId: connectedRepo.id },
     });
 
+    logStep(event.deliveryId, eventType, "processing", `Fetched ${rules.length} rules from database`);
+
     // If there are no rules configured, we're done
     if (rules.length === 0) {
+      logStep(event.deliveryId, eventType, "done", "No rules configured for this repository, skipping dispatches");
       await prisma.webhookEvent.update({
         where: { id: eventId },
-        data: { status: "done", error: "No rules configured for this repository." },
+        data: {
+          status: "done",
+          aiLabel,
+          aiSummary,
+          error: "No rules configured for this repository.",
+        },
       });
       return;
     }
@@ -47,12 +116,14 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
       if (!isMatch) continue;
 
       matchedAnyRule = true;
+      logStep(event.deliveryId, eventType, "processing", `Matched rule ID: ${rule.id} [Field: ${rule.matchField}, Value: ${rule.matchValue}]`);
       actionsLogs.push(`Matched rule: [Field: ${rule.matchField}, Value: ${rule.matchValue}]`);
 
-      // 1. GitHub Actions (Labels / Comments)
+      // A. GitHub Actions (Labels / Comments)
       const number = payload.issue?.number || payload.pull_request?.number;
 
       if ((rule.action === "label" || rule.action === "all") && rule.label && number) {
+        logStep(event.deliveryId, eventType, "processing", `Applying label: "${rule.label}" to issue/PR #${number}`);
         await octokit.rest.issues.addLabels({
           owner,
           repo: repoName,
@@ -63,6 +134,7 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
       }
 
       if ((rule.action === "comment" || rule.action === "all") && rule.comment && number) {
+        logStep(event.deliveryId, eventType, "processing", `Creating comment on issue/PR #${number}`);
         await octokit.rest.issues.createComment({
           owner,
           repo: repoName,
@@ -72,7 +144,7 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
         actionsLogs.push(`Added comment to issue/PR #${number}`);
       }
 
-      // 2. Slack Notification
+      // B. Slack Notification
       const slackUrl = process.env.SLACK_WEBHOOK_URL;
       if (slackUrl && rule.slackMessageTemplate) {
         let slackText = rule.slackMessageTemplate;
@@ -83,6 +155,12 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
           .replace("{author}", payload.sender?.login || "unknown")
           .replace("{url}", payload.issue?.html_url || payload.pull_request?.html_url || payload.compare || "");
 
+        // Append Gemini AI insights if generated
+        if (aiLabel || aiSummary) {
+          slackText += `\n\n*🤖 AI Triage Insight*:\n• *Suggested Label*: \`${aiLabel || "none"}\`\n• *Summary*: _${aiSummary || "N/A"}_`;
+        }
+
+        logStep(event.deliveryId, eventType, "processing", "Sending POST request to Slack incoming webhook");
         const slackRes = await fetch(slackUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -97,17 +175,21 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
       }
     }
 
+    logStep(event.deliveryId, eventType, "done", `Successfully processed event ID: ${event.id}`, { actions: actionsLogs });
+
     // Update event status to done
     await prisma.webhookEvent.update({
       where: { id: eventId },
       data: {
         status: "done",
+        aiLabel,
+        aiSummary,
         error: matchedAnyRule ? actionsLogs.join("\n") : "No rules matched this event.",
       },
     });
 
   } catch (error: any) {
-    console.error(`Error processing webhook event ${eventId}:`, error);
+    logStep(event.deliveryId, event.eventType, "failed", `Error processing webhook event ID: ${event.id}`, { error: error.message || String(error) });
 
     // Save failure error and update status to failed with backoff calculation
     const currentRetryCount = event.retryCount;

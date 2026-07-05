@@ -42,6 +42,8 @@ interface WebhookEvent {
   error: string | null;
   retryCount: number;
   nextRetryAt: string | null;
+  aiSummary: string | null;
+  aiLabel: string | null;
   createdAt: string;
 }
 
@@ -75,7 +77,8 @@ export default function DashboardClient({
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [connectMessage, setConnectMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
-  // New Rule Form states
+  // Rule Form / Edit states
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [matchField, setMatchField] = useState<string>("title");
   const [matchValue, setMatchValue] = useState<string>("");
   const [action, setAction] = useState<string>("label");
@@ -120,6 +123,7 @@ export default function DashboardClient({
 
     fetchRules();
     fetchRepoEvents();
+    handleCancelEdit(); // reset rule form on repo switch
   }, [selectedRepoId]);
 
   // Periodic events logging polling (every 10 seconds if tab is logs)
@@ -179,40 +183,75 @@ export default function DashboardClient({
     }
   };
 
-  // Handle adding a rule
-  const handleAddRule = async (e: React.FormEvent) => {
+  // Rule Form Edit Handlers
+  const handleStartEditRule = (rule: Rule) => {
+    setEditingRuleId(rule.id);
+    setMatchField(rule.matchField);
+    setMatchValue(rule.matchValue);
+    setAction(rule.action);
+    setLabel(rule.label || "");
+    setComment(rule.comment || "");
+    setSlackTemplate(rule.slackMessageTemplate || "");
+    setRuleMessage(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRuleId(null);
+    setMatchField("title");
+    setMatchValue("");
+    setAction("label");
+    setLabel("");
+    setComment("");
+    setSlackTemplate("🔔 *{event}* event triggered on repo *{repo}* by {author}.\nTitle: {title}\nLink: {url}");
+    setRuleMessage(null);
+  };
+
+  // Handle adding or updating a rule
+  const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRepoId || !matchValue) return;
     setIsSubmittingRule(true);
     setRuleMessage(null);
 
+    const isEditing = !!editingRuleId;
+    const url = "/api/rules";
+    const method = isEditing ? "PUT" : "POST";
+    const body = {
+      id: editingRuleId,
+      repoId: selectedRepoId,
+      matchField,
+      matchValue,
+      action,
+      label: (action === "label" || action === "all") ? label : null,
+      comment: (action === "comment" || action === "all") ? comment : null,
+      slackMessageTemplate: (action === "slack" || action === "all") ? slackTemplate : null,
+    };
+
     try {
-      const res = await fetch("/api/rules", {
-        method: "POST",
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoId: selectedRepoId,
-          matchField,
-          matchValue,
-          action,
-          label: (action === "label" || action === "all") ? label : null,
-          comment: (action === "comment" || action === "all") ? comment : null,
-          slackMessageTemplate: (action === "slack" || action === "all") ? slackTemplate : null,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to create rule");
+        throw new Error(data.error || "Failed to save rule");
       }
 
-      setRules(prev => [data, ...prev]);
-      setMatchValue("");
-      setLabel("");
-      setComment("");
-      setRuleMessage({ text: "Rule created successfully!", isError: false });
+      if (isEditing) {
+        setRules(prev => prev.map(r => r.id === data.id ? data : r));
+        setRuleMessage({ text: "Rule updated successfully!", isError: false });
+        handleCancelEdit();
+      } else {
+        setRules(prev => [data, ...prev]);
+        setMatchValue("");
+        setLabel("");
+        setComment("");
+        setRuleMessage({ text: "Rule created successfully!", isError: false });
+      }
     } catch (err: any) {
-      setRuleMessage({ text: err.message || "Failed to create rule", isError: true });
+      setRuleMessage({ text: err.message || "Failed to save rule", isError: true });
     } finally {
       setIsSubmittingRule(false);
     }
@@ -233,6 +272,9 @@ export default function DashboardClient({
       }
 
       setRules(prev => prev.filter(r => r.id !== ruleId));
+      if (editingRuleId === ruleId) {
+        handleCancelEdit();
+      }
     } catch (err: any) {
       alert(err.message || "An error occurred while deleting the rule");
     }
@@ -372,8 +414,8 @@ export default function DashboardClient({
               {activeTab === "rules" ? (
                 <div>
                   <div className={styles.card}>
-                    <h2 className={styles.cardTitle}>Create New Rule</h2>
-                    <form onSubmit={handleAddRule} className={styles.ruleForm}>
+                    <h2 className={styles.cardTitle}>{editingRuleId ? "Edit Rule" : "Create New Rule"}</h2>
+                    <form onSubmit={handleSaveRule} className={styles.ruleForm}>
                       <div className={styles.formRow}>
                         <div className={styles.formGroup}>
                           <label>Match Trigger Field</label>
@@ -446,9 +488,21 @@ export default function DashboardClient({
                         </div>
                       )}
 
-                      <button type="submit" disabled={isSubmittingRule} className={styles.btnPrimary}>
-                        {isSubmittingRule ? "Saving..." : "Save Rule"}
-                      </button>
+                      <div style={{ display: "flex", gap: "12px" }}>
+                        <button type="submit" disabled={isSubmittingRule} className={styles.btnPrimary}>
+                          {isSubmittingRule ? "Saving..." : (editingRuleId ? "Update Rule" : "Save Rule")}
+                        </button>
+                        {editingRuleId && (
+                          <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            className={styles.signOutBtn}
+                            style={{ background: "rgba(255,255,255,0.05)", color: "#fff", borderColor: "rgba(255,255,255,0.1)", flex: "1" }}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
 
                       {ruleMessage && (
                         <div
@@ -483,12 +537,21 @@ export default function DashboardClient({
                                 {rule.label && `[Label: "${rule.label}"]`}
                               </div>
                             </div>
-                            <button
-                              className={styles.btnDanger}
-                              onClick={() => handleDeleteRule(rule.id)}
-                            >
-                              Delete
-                            </button>
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <button
+                                className={styles.signOutBtn}
+                                style={{ background: "rgba(255, 255, 255, 0.05)", color: "#fff", borderColor: "rgba(255, 255, 255, 0.1)", padding: "6px 12px", fontSize: "12px", borderRadius: "4px" }}
+                                onClick={() => handleStartEditRule(rule)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className={styles.btnDanger}
+                                onClick={() => handleDeleteRule(rule.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -526,6 +589,7 @@ export default function DashboardClient({
                             <th>Event</th>
                             <th>Status</th>
                             <th>Delivery ID</th>
+                            <th>AI Insights</th>
                             <th>Actions taken / Errors</th>
                           </tr>
                         </thead>
@@ -554,12 +618,32 @@ export default function DashboardClient({
                                 </span>
                                 {event.status === "failed" && event.retryCount > 0 && (
                                   <div style={{ fontSize: "10px", color: "#f87171", marginTop: "2px" }}>
-                                    Retry #{event.retryCount}
+                                    Retry #{event.retryCount}/5
                                   </div>
                                 )}
                               </td>
                               <td style={{ fontFamily: "monospace", color: "#9ca3af", fontSize: "12px" }}>
                                 {event.deliveryId.substring(0, 8)}...
+                              </td>
+                              <td>
+                                {event.aiLabel || event.aiSummary ? (
+                                  <div style={{ fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    {event.aiLabel && (
+                                      <div>
+                                        <span style={{ background: "rgba(167, 139, 250, 0.15)", color: "#a78bfa", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: "600", textTransform: "lowercase" }}>
+                                          {event.aiLabel}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {event.aiSummary && (
+                                      <div style={{ color: "#9ca3af", fontStyle: "italic", fontSize: "11px", maxWidth: "200px" }}>
+                                        "{event.aiSummary}"
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: "#4b5563", fontSize: "12px" }}>n/a</span>
+                                )}
                               </td>
                               <td>
                                 <div

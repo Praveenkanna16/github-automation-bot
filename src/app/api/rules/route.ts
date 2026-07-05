@@ -61,6 +61,40 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PUT(req: Request) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { id, matchField, matchValue, action, label, comment, slackMessageTemplate } = await req.json();
+
+    if (!id || !matchField || !matchValue || !action) {
+      return NextResponse.json({ error: "Missing required rule parameters" }, { status: 400 });
+    }
+
+    const rule = await prisma.rule.update({
+      where: {
+        id,
+        userId: session.user.id,
+      },
+      data: {
+        matchField,
+        matchValue,
+        action,
+        label,
+        comment,
+        slackMessageTemplate,
+      },
+    });
+
+    return NextResponse.json(rule);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {
