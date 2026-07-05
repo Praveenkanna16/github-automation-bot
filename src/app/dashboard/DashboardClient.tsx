@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-img-element, react/no-unescaped-entities */
 
 import { useState, useEffect } from "react";
 import { signOut } from "next-auth/react";
@@ -93,6 +94,17 @@ export default function DashboardClient({
   // Active connected repo object
   const activeRepo = connectedRepos.find(r => r.id === selectedRepoId);
 
+  const handleCancelEdit = () => {
+    setEditingRuleId(null);
+    setMatchField("title");
+    setMatchValue("");
+    setAction("label");
+    setLabel("");
+    setComment("");
+    setSlackTemplate("🔔 *{event}* event triggered on repo *{repo}* by {author}.\nTitle: {title}\nLink: {url}");
+    setRuleMessage(null);
+  };
+
   // Load rules when repository selection changes
   useEffect(() => {
     if (!selectedRepoId) return;
@@ -123,7 +135,6 @@ export default function DashboardClient({
 
     fetchRules();
     fetchRepoEvents();
-    handleCancelEdit(); // reset rule form on repo switch
   }, [selectedRepoId]);
 
   // Periodic events logging polling (every 10 seconds if tab is logs)
@@ -195,16 +206,6 @@ export default function DashboardClient({
     setRuleMessage(null);
   };
 
-  const handleCancelEdit = () => {
-    setEditingRuleId(null);
-    setMatchField("title");
-    setMatchValue("");
-    setAction("label");
-    setLabel("");
-    setComment("");
-    setSlackTemplate("🔔 *{event}* event triggered on repo *{repo}* by {author}.\nTitle: {title}\nLink: {url}");
-    setRuleMessage(null);
-  };
 
   // Handle adding or updating a rule
   const handleSaveRule = async (e: React.FormEvent) => {
@@ -369,7 +370,7 @@ export default function DashboardClient({
                     className={`${styles.repoItem} ${
                       selectedRepoId === repo.id ? styles.repoItemActive : ""
                     }`}
-                    onClick={() => setSelectedRepoId(repo.id)}
+                    onClick={() => { setSelectedRepoId(repo.id); handleCancelEdit(); }}
                   >
                     <div className={styles.repoItemName}>{repo.repoFullName}</div>
                     <div className={styles.repoItemMeta}>

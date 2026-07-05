@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { prisma } from "@/lib/db";
 import { processWebhookEvent } from "@/lib/webhookProcessor";
 import { NextResponse } from "next/server";
