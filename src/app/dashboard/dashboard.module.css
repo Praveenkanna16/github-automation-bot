@@ -1,0 +1,409 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: hsl(230, 25%, 8%);
+  color: #f3f4f6;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 32px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.logoInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.botIcon {
+  font-size: 24px;
+}
+
+.logoText {
+  font-weight: 700;
+  font-size: 20px;
+  background: linear-gradient(135deg, #fff, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.userProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.userName {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.signOutBtn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.signOutBtn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.mainLayout {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  background: rgba(0, 0, 0, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  overflow-y: auto;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin-bottom: 12px;
+}
+
+.connectSection select {
+  width: 100%;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  margin-bottom: 12px;
+  outline: none;
+}
+
+.connectSection select option {
+  background: hsl(230, 25%, 8%);
+}
+
+.btnPrimary {
+  width: 100%;
+  padding: 10px 16px;
+  background: #6d28d9;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnPrimary:hover {
+  background: #7c3aed;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.repoList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.repoItem {
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.repoItem:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.repoItemActive {
+  background: rgba(109, 40, 217, 0.15);
+  border-color: rgba(109, 40, 217, 0.4);
+}
+
+.repoItemName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.repoItemMeta {
+  font-size: 11px;
+  color: #8b5cf6;
+  margin-top: 4px;
+}
+
+.contentArea {
+  padding: 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  text-align: center;
+  color: #6b7280;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.dashboardGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.repoHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.repoTitle {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9ca3af;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tabActive {
+  color: #a78bfa;
+  border-bottom-color: #8b5cf6;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.cardTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #fff;
+}
+
+.ruleForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.formGroup label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.formGroup input,
+.formGroup select,
+.formGroup textarea {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border 0.2s;
+}
+
+.formGroup input:focus,
+.formGroup select:focus,
+.formGroup textarea:focus {
+  border-color: #8b5cf6;
+}
+
+.formHelper {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.rulesList {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ruleItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.ruleInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ruleCondition {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ruleActionLabel {
+  font-size: 12px;
+  color: #8b5cf6;
+}
+
+.btnDanger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnDanger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.logsTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.logsTable th,
+.logsTable td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+}
+
+.logsTable th {
+  font-weight: 600;
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badgeReceived {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.badgeProcessing {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.badgeDone {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.badgeFailed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.logDetail {
+  font-family: monospace;
+  font-size: 11px;
+  color: #9ca3af;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

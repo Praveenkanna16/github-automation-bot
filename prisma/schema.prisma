@@ -1,0 +1,110 @@
+datasource db {
+  provider  = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String?
+  email          String          @unique
+  emailVerified  DateTime?
+  image          String?
+  accounts       Account[]
+  sessions       Session[]
+  connectedRepos ConnectedRepo[]
+  rules          Rule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model ConnectedRepo {
+  id           String         @id @default(cuid())
+  userId       String
+  repoFullName String
+  accessToken  String
+  webhookId    String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rules         Rule[]
+  webhookEvents WebhookEvent[]
+
+  @@unique([userId, repoFullName])
+}
+
+model Rule {
+  id                   String        @id @default(cuid())
+  userId               String
+  repoId               String
+  matchField           String        // "title", "body", "branch", etc.
+  matchValue           String        // value to match
+  action               String        // "label", "comment", "slack", "all"
+  label                String?       // label to apply
+  comment              String?       // comment text
+  slackMessageTemplate String?       // slack message text
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repo                 ConnectedRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
+
+model WebhookEvent {
+  id          String        @id @default(cuid())
+  repoId      String
+  deliveryId  String        @unique // X-GitHub-Delivery header
+  eventType   String        // "issues", "pull_request", "push"
+  payload     Json          // raw payload JSON
+  status      String        // "received", "processing", "done", "failed"
+  error       String?       // error message if failed
+  retryCount  Int           @default(0)
+  nextRetryAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  repo        ConnectedRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
