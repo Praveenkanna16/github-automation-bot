@@ -12,7 +12,7 @@ graph TD
     User -->|Dashboard UI| Dashboard[Next.js App Router Frontend]
     Dashboard -->|GET/POST/PUT/DELETE| API[Next.js API Routes]
     
-    GitHub[GitHub Repo Webhooks] -->|POST Payload + HMAC| WebhookRoute[/api/webhooks/github]
+    GitHub[GitHub Repo Webhooks] -->|POST Payload + HMAC| WebhookRoute["/api/webhooks/github"]
     WebhookRoute -->|1. Timing-safe Signature Verify| WebhookRoute
     WebhookRoute -->|2. Idempotency Check| DB[(Neon Postgres DB)]
     WebhookRoute -->|3. Durable Ingestion| DB
@@ -24,7 +24,7 @@ graph TD
     Processor -->|Octokit Label/Comment| GitHubAPI[GitHub REST API]
     Processor -->|Block Kit JSON Payload| Slack[Slack Webhook URL]
     
-    Cron[/api/cron/retry-failed] -->|Bearer auth| Processor
+    Cron["/api/cron/retry-failed"] -->|Bearer auth| Processor
 ```
 
 ---
