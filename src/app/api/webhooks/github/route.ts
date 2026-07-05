@@ -5,6 +5,7 @@ import { processWebhookEvent } from "@/lib/webhookProcessor";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
+  console.log("[WEBHOOK ROUTE] env DATABASE_URL starts:", process.env.DATABASE_URL?.substring(0, 15), "len =", process.env.DATABASE_URL?.length);
   const signature = req.headers.get("x-hub-signature-256");
   const deliveryId = req.headers.get("x-github-delivery");
   const eventType = req.headers.get("x-github-event");
