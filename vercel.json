@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/retry-failed",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
