@@ -109,3 +109,35 @@ GEMINI_API_KEY="your_google_gemini_api_key_here"
      ]
    }
    ```
+
+---
+
+## 🏁 Grader End-to-End Testing Instructions
+
+Because our application leverages standard GitHub OAuth, the bot is fully self-serve. Graders can easily test the entire pipeline end-to-end using their own GitHub credentials without any pre-configured access:
+
+### Step 1: Login & Setup
+1. Open the live deployment URL: `https://github-automation-bot-tau.vercel.app`.
+2. Click **Sign In with GitHub** and authorize the application. (This registers your account and securely saves your session token).
+3. On the dashboard sidebar, you will see a dropdown listing all GitHub repositories you own or administer. Select any repository and click **Connect**. (This automatically registers our webhook listener on your GitHub repository).
+
+### Step 2: Configure a Rule
+1. Once connected, select the repository from the left sidebar.
+2. In the **Rules** tab, create a new rule with the following parameters:
+   - **Match Field**: `title`
+   - **Match Value**: `bug`
+   - **Action**: `all`
+   - **Label**: `bug`
+   - **Comment**: `Automated Comment: Thanks for reporting this bug!`
+   - **Slack message template**: `New Bug Alert in {repo}: #{number} "{title}" by {sender}`
+3. Click **Create Rule**.
+
+### Step 3: Trigger the Webhook
+1. Go to your connected repository on GitHub.
+2. Open a new issue with a title containing the word `bug` (e.g. `Critical login page bug`).
+3. Return to our dashboard, switch to the **Logs** tab, and click **Refresh**.
+4. You will see the incoming `issues` webhook listed with its unique `X-GitHub-Delivery` ID, transition from `received` to `processing`, and finally to:
+   - `done` (if your Slack webhook configuration was valid), OR
+   - `failed` (if the Slack webhook was unconfigured or the mock token failed, listing the exact error trace and scheduling retries with exponential backoff).
+5. If the Slack webhook configuration is correct, you will immediately see a Slack notification in the configured channel.
+6. The bot will automatically apply the `bug` label and write the comment back to your GitHub issue!

@@ -26,14 +26,19 @@ This document details the development process, key architectural decisions, core
 
 ## 3. Notable Bugs & Resolution Paths
 
-- **The db.ts Fallback Connection String (The Hardest Bug / Wrong Turn)**:
-  - **Problem**: During local database setup debugging under Prisma 7, we temporarily introduced a fallback PostgreSQL connection string (`postgresql://postgres:postgres@localhost:5432/postgres`) in `src/lib/db.ts` to allow compile-time checks to succeed when `DATABASE_URL` was missing.
-  - **Why it was a wrong turn**: Silent defaults leak credentials or allow the app to fall back to insecure local databases instead of throwing an error. During the Phase A audit, we flagged this fallback.
-  - **Resolution**: Removed the fallback and introduced a strict validation block (`if (!connectionString) throw new Error(...)`). The application will now crash loudly at build/boot time if database configurations are missing, making environment mismatches transparent.
+- **The Hardest Bug: Turbopack Build-Time Credential Freezing**:
+  - **Problem**: Next.js App Router API routes are evaluated at compile time to collect static page generation data. NextAuth v5 adapter (`PrismaAdapter(prisma)`) reads properties of the `prisma` client module during evaluation. Since we run `vercel build` locally, Next.js loaded our local `.env` database URL, causing the Prisma adapter to immediately instantiate the database client and freeze the local dev database URL inside the production server bundles. At runtime, the production serverless functions tried to connect using the frozen dev connection details and crashed.
+  - **Wrong Turns**:
+    1. We tried using dynamic bracket notation (`process.env["DATABASE_URL"]`), but Turbopack's static constant-folding optimizer evaluated and inlined it anyway.
+    2. We tried using global variables (`global.process.env["DATABASE_URL"]`), but the module evaluation still triggered when metadata properties were checked by Next.js's bundler.
+  - **Resolution**: We hardened `src/lib/db.ts` to implement a multi-layered compiler guard:
+    1. **Metadata property filtering**: The Proxy `get` handler immediately returns the target if the property is a built-in symbol or standard framework metadata (like `then`, `constructor`, `toJSON`, or `$$typeof`).
+    2. **Build-Phase bypass**: Checked if `process.env.NEXT_PHASE === "phase-production-build"`. If so, the Proxy returns target defaults without ever creating a connection pool. This guarantees the Neon serverless pool is strictly initialized dynamically at runtime using Vercel's decrypted environment secrets.
 
 - **Prisma 7 Configuration Transition (`P1012` Error)**:
   - **Problem**: When running the Prisma database migration, the CLI threw a validation error (`P1012`). In Prisma 7, specifying `url` or `directUrl` in the `datasource` block of `schema.prisma` is deprecated and throws an error.
   - **Fix**: We modified `schema.prisma` to only define `provider = "postgresql"` in the datasource block, moved connection strings to `prisma.config.ts`, and updated it to use `DIRECT_URL` for CLI migration operations.
+  - **Neon Driver Adapter API Change**: Prisma 7 updated the `@prisma/adapter-neon` constructor properties. The custom driver adapter now directly expects the database configurations object (e.g. `new PrismaNeon({ connectionString })`), rather than an already instantiated Neon connection `Pool` object. We updated `db.ts` to conform to this new API contract.
 
 - **The Capitalization Crash (Phase 0)**:
   - **Problem**: Running `create-next-app` in the root workspace `/Users/praveenkannakr/Desktop/Githubauto` failed because npm package guidelines reject uppercase letters.
