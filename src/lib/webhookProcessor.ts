@@ -15,9 +15,10 @@ function logStep(deliveryId: string, eventType: string, status: string, message:
 }
 
 export async function processWebhookEvent(eventId: string): Promise<void> {
+  const startTime = Date.now();
   const event = await prisma.webhookEvent.findUnique({
     where: { id: eventId },
-    include: { repo: true },
+    include: { repo: { include: { user: true } } },
   });
 
   if (!event) {
@@ -36,19 +37,30 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
     const payload = event.payload as any;
     const eventType = event.eventType;
     const connectedRepo = event.repo;
+    const user = connectedRepo.user;
 
-    // 1. Optional Gemini AI Triage Step (Phase E)
+    // 1. Optional Gemini AI Triage Step
     const geminiKey = process.env.GEMINI_API_KEY;
     let aiLabel: string | null = null;
     let aiSummary: string | null = null;
+    let aiPriority: string | null = null;
+    let aiReasoning: string | null = null;
+    let aiConfidence: number | null = null;
 
-    if (geminiKey && (eventType === "issues" || eventType === "pull_request")) {
+    if (geminiKey && user.aiEnabled && (eventType === "issues" || eventType === "pull_request")) {
       try {
         logStep(event.deliveryId, eventType, "processing", "Initiating Gemini AI triage classification");
         const title = payload.issue?.title || payload.pull_request?.title || "";
         const body = payload.issue?.body || payload.pull_request?.body || "";
 
-        const prompt = `Analyze the following GitHub issue/pull request. Return a JSON object with two fields: 'suggestedLabel' (a single lowercase word like bug, docs, feature, enhancement, question) and 'summary' (a concise one-sentence summary under 100 characters). Output only the raw JSON, no markdown blocks.
+        const prompt = `Analyze the following GitHub issue/pull request. Return a JSON object with the following fields:
+- 'suggestedLabel': a single lowercase word (e.g. bug, docs, feature, enhancement, question)
+- 'summary': a concise one-sentence summary under 100 characters
+- 'priority': one of 'high', 'medium', 'low'
+- 'reasoning': a brief explanation of the priority and label choice
+- 'confidence': a decimal number between 0 and 1 representing your confidence level.
+
+Output only valid, raw JSON, no markdown formatting blocks.
 Title: ${title}
 Body: ${body}`;
 
@@ -82,7 +94,10 @@ Body: ${body}`;
           const parsed = JSON.parse(textResponse.trim());
           aiLabel = parsed.suggestedLabel || null;
           aiSummary = parsed.summary || null;
-          logStep(event.deliveryId, eventType, "processing", "Gemini AI triage analysis succeeded", { aiLabel, aiSummary });
+          aiPriority = parsed.priority || null;
+          aiReasoning = parsed.reasoning || null;
+          aiConfidence = typeof parsed.confidence === "number" ? parsed.confidence : null;
+          logStep(event.deliveryId, eventType, "processing", "Gemini AI triage analysis succeeded", { aiLabel, aiSummary, aiPriority });
         } else {
           const errText = await geminiRes.text();
           logStep(event.deliveryId, eventType, "processing", "Gemini AI API call failed", { response: errText });
@@ -92,23 +107,28 @@ Body: ${body}`;
       }
     }
 
-    // Fetch the rules configured for this repo
+    // Fetch the rules configured for this repo (only enabled ones)
     const rules = await prisma.rule.findMany({
-      where: { repoId: connectedRepo.id },
+      where: { repoId: connectedRepo.id, enabled: true },
     });
 
-    logStep(event.deliveryId, eventType, "processing", `Fetched ${rules.length} rules from database`);
+    logStep(event.deliveryId, eventType, "processing", `Fetched ${rules.length} active rules from database`);
 
     // If there are no rules configured, we're done
     if (rules.length === 0) {
-      logStep(event.deliveryId, eventType, "done", "No rules configured for this repository, skipping dispatches");
+      logStep(event.deliveryId, eventType, "done", "No active rules configured for this repository, skipping dispatches");
+      const processingMs = Date.now() - startTime;
       await prisma.webhookEvent.update({
         where: { id: eventId },
         data: {
           status: "done",
           aiLabel,
           aiSummary,
-          error: "No rules configured for this repository.",
+          aiPriority,
+          aiReasoning,
+          aiConfidence,
+          processingMs,
+          error: "No active rules configured for this repository.",
         },
       });
       return;
@@ -120,8 +140,17 @@ Body: ${body}`;
     let matchedAnyRule = false;
     const actionsLogs: string[] = [];
 
+    // Keep track of labels/comments applied to this specific run to prevent duplicates within a single delivery trigger
+    const appliedLabels = new Set<string>();
+    let commentPosted = false;
+
     for (const rule of rules) {
-      const isMatch = matchRule(payload, eventType, rule.matchField, rule.matchValue);
+      // Filter by rule eventType
+      if (rule.eventType !== "all" && rule.eventType !== eventType) {
+        continue;
+      }
+
+      const isMatch = matchRule(payload, eventType, rule.matchField, rule.matchValue, { aiLabel });
       if (!isMatch) continue;
 
       matchedAnyRule = true;
@@ -132,28 +161,38 @@ Body: ${body}`;
       const number = payload.issue?.number || payload.pull_request?.number;
 
       if ((rule.action === "label" || rule.action === "all") && rule.label && number) {
-        logStep(event.deliveryId, eventType, "processing", `Applying label: "${rule.label}" to issue/PR #${number}`);
-        await octokit.rest.issues.addLabels({
-          owner,
-          repo: repoName,
-          issue_number: number,
-          labels: [rule.label],
-        });
-        actionsLogs.push(`Applied label "${rule.label}" to issue/PR #${number}`);
+        if (!appliedLabels.has(rule.label)) {
+          logStep(event.deliveryId, eventType, "processing", `Applying label: "${rule.label}" to issue/PR #${number}`);
+          await octokit.rest.issues.addLabels({
+            owner,
+            repo: repoName,
+            issue_number: number,
+            labels: [rule.label],
+          });
+          appliedLabels.add(rule.label);
+          actionsLogs.push(`Applied label "${rule.label}" to issue/PR #${number}`);
+        } else {
+          actionsLogs.push(`Skipped duplicate label "${rule.label}" on this event trigger.`);
+        }
       }
 
       if ((rule.action === "comment" || rule.action === "all") && rule.comment && number) {
-        logStep(event.deliveryId, eventType, "processing", `Creating comment on issue/PR #${number}`);
-        await octokit.rest.issues.createComment({
-          owner,
-          repo: repoName,
-          issue_number: number,
-          body: rule.comment,
-        });
-        actionsLogs.push(`Added comment to issue/PR #${number}`);
+        if (!commentPosted) {
+          logStep(event.deliveryId, eventType, "processing", `Creating comment on issue/PR #${number}`);
+          await octokit.rest.issues.createComment({
+            owner,
+            repo: repoName,
+            issue_number: number,
+            body: rule.comment,
+          });
+          commentPosted = true;
+          actionsLogs.push(`Added comment to issue/PR #${number}`);
+        } else {
+          actionsLogs.push(`Skipped duplicate comment actions on this event trigger.`);
+        }
       }
 
-      // B. Slack Notification
+      // B. Slack Notification (Structured Message with Block Kit)
       const slackUrl = process.env.SLACK_WEBHOOK_URL;
       if (slackUrl && rule.slackMessageTemplate) {
         let slackText = rule.slackMessageTemplate;
@@ -164,12 +203,53 @@ Body: ${body}`;
           .replace("{author}", payload.sender?.login || "unknown")
           .replace("{url}", payload.issue?.html_url || payload.pull_request?.html_url || payload.compare || "");
 
-        // Append Gemini AI insights if generated
-        if (aiLabel || aiSummary) {
-          slackText += `\n\n*🤖 AI Triage Insight*:\n• *Suggested Label*: \`${aiLabel || "none"}\`\n• *Summary*: _${aiSummary || "N/A"}_`;
+        // Build Block Kit Blocks
+        const blocks = [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*GitAutomate Notification* :bell:\n*Event:* \`${eventType}\` in *${connectedRepo.repoFullName}*`
+            }
+          },
+          {
+            type: "divider"
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Title:* ${payload.issue?.title || payload.pull_request?.title || "Commit/Push"}\n*Author:* \`${payload.sender?.login || "unknown"}\``
+            }
+          }
+        ];
+
+        if (aiLabel || aiSummary || aiPriority) {
+          blocks.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*🤖 AI Triage Insight:*\n• *Suggested Label:* \`${aiLabel || "none"}\`\n• *Priority:* \`${aiPriority || "low"}\`\n• *Summary:* _${aiSummary || "N/A"}_`
+            }
+          } as any);
         }
 
-        logStep(event.deliveryId, eventType, "processing", "Sending POST request to Slack incoming webhook");
+        blocks.push({
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: {
+                type: "plain_text",
+                text: "View on GitHub",
+                emoji: true
+              },
+              url: payload.issue?.html_url || payload.pull_request?.html_url || payload.compare || "https://github.com"
+            }
+          ]
+        } as any);
+
+        logStep(event.deliveryId, eventType, "processing", "Sending Block Kit POST request to Slack incoming webhook");
         const slackController = new AbortController();
         const slackTimeout = setTimeout(() => slackController.abort(), 8000);
         let slackRes;
@@ -178,7 +258,10 @@ Body: ${body}`;
             method: "POST",
             headers: { "Content-Type": "application/json" },
             signal: slackController.signal,
-            body: JSON.stringify({ text: slackText }),
+            body: JSON.stringify({
+              text: slackText, // fallback text
+              blocks: blocks
+            }),
           });
         } finally {
           clearTimeout(slackTimeout);
@@ -186,13 +269,15 @@ Body: ${body}`;
 
         if (!slackRes.ok) {
           const resText = await slackRes.text();
-          throw new Error(`Slack notification failed with status ${slackRes.status}: ${resText}`);
+          throw new Error(`Slack Block Kit notification failed with status ${slackRes.status}: ${resText}`);
         }
-        actionsLogs.push(`Sent Slack alert successfully.`);
+        actionsLogs.push(`Sent Slack Block Kit alert successfully.`);
       }
     }
 
     logStep(event.deliveryId, eventType, "done", `Successfully processed event ID: ${event.id}`, { actions: actionsLogs });
+
+    const processingMs = Date.now() - startTime;
 
     // Update event status to done
     await prisma.webhookEvent.update({
@@ -201,12 +286,18 @@ Body: ${body}`;
         status: "done",
         aiLabel,
         aiSummary,
+        aiPriority,
+        aiReasoning,
+        aiConfidence,
+        processingMs,
         error: matchedAnyRule ? actionsLogs.join("\n") : "No rules matched this event.",
       },
     });
 
   } catch (error: any) {
     logStep(event.deliveryId, event.eventType, "failed", `Error processing webhook event ID: ${event.id}`, { error: error.message || String(error) });
+
+    const processingMs = Date.now() - startTime;
 
     // Save failure error and update status to failed with backoff calculation
     const currentRetryCount = event.retryCount;
@@ -218,6 +309,7 @@ Body: ${body}`;
       data: {
         status: "failed",
         error: error.message || String(error),
+        processingMs,
         retryCount: { increment: 1 },
         nextRetryAt: nextRetry,
       },
@@ -227,10 +319,15 @@ Body: ${body}`;
   }
 }
 
-function matchRule(payload: any, eventType: string, matchField: string, matchValue: string): boolean {
+function matchRule(payload: any, eventType: string, matchField: string, matchValue: string, extra: { aiLabel?: string | null } = {}): boolean {
   try {
     let contentToMatch = "";
-    if (eventType === "issues") {
+    if (matchField === "author") {
+      contentToMatch = payload.sender?.login || "";
+    } else if (matchField === "aiLabel") {
+      contentToMatch = extra.aiLabel || "";
+      return contentToMatch.toLowerCase() === matchValue.toLowerCase();
+    } else if (eventType === "issues") {
       if (matchField === "title") contentToMatch = payload.issue?.title || "";
       else if (matchField === "body") contentToMatch = payload.issue?.body || "";
     } else if (eventType === "pull_request") {
@@ -240,7 +337,7 @@ function matchRule(payload: any, eventType: string, matchField: string, matchVal
       if (matchField === "branch") {
         contentToMatch = payload.ref || "";
         const branch = contentToMatch.replace("refs/heads/", "");
-        return branch.toLowerCase() === matchValue.toLowerCase() || contentToMatch.includes(matchValue);
+        return branch.toLowerCase() === matchValue.toLowerCase() || contentToMatch.toLowerCase().includes(matchValue.toLowerCase());
       }
     }
     

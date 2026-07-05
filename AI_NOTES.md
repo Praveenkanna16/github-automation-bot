@@ -57,7 +57,13 @@ We integrated Gemini 1.5 Flash via a structured JSON POST query (leveraging the 
 
 ---
 
-## 5. What's Left / Next Steps
+## 5. Production Hardening Pass (Completed)
 
-- **Webhook Cleanup**: Implement automatic delete commands on GitHub when a user disconnects a repository via the dashboard, removing stale webhook listeners.
-- **Multi-Repo/Multi-User Robustness**: Make `deliveryId` unique per repository (`@@unique([repoId, deliveryId])`) to allow multiple users to connect and configure actions for the same repository.
+- **Clean UI & CSS Redesign**: Shifted from dark-theme radial gradients to a crisp, light, Stripe-style dashboard using Inter typography, Lucide React icons, and a cohesive set of styling primitives.
+- **Repository Management**: Added Sync and Disconnect actions, including automatic cleanup of webhooks on GitHub using Octokit to prevent stale listeners.
+- **Rule Customizations**: Added Zod validation schemas, enabled toggles, and event-type parameters (issues, PRs, pushes).
+- **Observability Stats API**: Built `/api/stats` to aggregate total events, failure counts, success rates, retry queue depth, and average processing milliseconds.
+- **Security & Headers**: Applied security headers (X-Frame-Options, Referrer-Policy) in next.config.ts and rate limiting in the webhook route.
+- **Deduplication**: Webhook processor now prevents duplicate label or comment actions on a single delivery trigger.
+- **Structured Block Kit**: Updated Slack integrations to use rich Block Kit structure.
+

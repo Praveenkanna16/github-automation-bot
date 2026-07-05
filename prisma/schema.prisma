@@ -12,6 +12,7 @@ model User {
   email          String          @unique
   emailVerified  DateTime?
   image          String?
+  aiEnabled      Boolean         @default(true)
   accounts       Account[]
   sessions       Session[]
   connectedRepos ConnectedRepo[]
@@ -80,8 +81,10 @@ model Rule {
   id                   String        @id @default(cuid())
   userId               String
   repoId               String
-  matchField           String        // "title", "body", "branch", etc.
+  enabled              Boolean       @default(true)
+  matchField           String        // "title", "body", "branch", "author", "aiLabel"
   matchValue           String        // value to match
+  eventType            String        @default("all") // "issues", "pull_request", "push", "all"
   action               String        // "label", "comment", "slack", "all"
   label                String?       // label to apply
   comment              String?       // comment text
@@ -94,19 +97,26 @@ model Rule {
 }
 
 model WebhookEvent {
-  id          String        @id @default(cuid())
-  repoId      String
-  deliveryId  String        @unique // X-GitHub-Delivery header
-  eventType   String        // "issues", "pull_request", "push"
-  payload     Json          // raw payload JSON
-  status      String        // "received", "processing", "done", "failed"
-  error       String?       // error message if failed
-  retryCount  Int           @default(0)
-  nextRetryAt DateTime?
-  aiSummary   String?
-  aiLabel     String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(cuid())
+  repoId       String
+  deliveryId   String        @unique // X-GitHub-Delivery header
+  eventType    String        // "issues", "pull_request", "push"
+  payload      Json          // raw payload JSON
+  status       String        // "received", "processing", "done", "failed"
+  error        String?       // error message if failed
+  retryCount   Int           @default(0)
+  nextRetryAt  DateTime?
+  processingMs Int?          // processing duration in milliseconds
+  aiSummary    String?
+  aiLabel      String?
+  aiPriority   String?       // "high", "medium", "low"
+  aiReasoning  String?
+  aiConfidence Float?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
-  repo        ConnectedRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  repo         ConnectedRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([repoId, createdAt(sort: Desc)])
+  @@index([status, nextRetryAt])
 }

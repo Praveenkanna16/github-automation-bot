@@ -1,92 +1,95 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { auth } from "@/auth";
-import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
+import { prisma } from "@/lib/db";
 import { Octokit } from "octokit";
 import DashboardClient from "./DashboardClient";
+import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session?.user?.id) {
-    redirect("/login");
-  }
+  if (!session?.user?.id) redirect("/login");
 
-  // 1. Fetch user's GitHub access token
-  const account = await prisma.account.findFirst({
-    where: {
-      userId: session.user.id,
-      provider: "github",
-    },
-  });
+  const userId = session.user.id;
 
-  if (!account?.access_token) {
-    redirect("/login");
-  }
-
-  // 2. Fetch connected repos from DB
-  const dbConnectedRepos = await prisma.connectedRepo.findMany({
-    where: { userId: session.user.id },
+  // Load connected repos
+  const connectedRepos = await prisma.connectedRepo.findMany({
+    where: { userId },
     orderBy: { createdAt: "desc" },
   });
 
-  // 3. Fetch GitHub repositories via Octokit
-  let githubRepos: any[] = [];
-  let fetchError = null;
+  // Load latest events for first connected repo (client handles per-repo fetching)
+  const initialEvents = connectedRepos.length > 0
+    ? await prisma.webhookEvent.findMany({
+        where: { repoId: connectedRepos[0].id },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      })
+    : [];
+
+  // Fetch GitHub repos via Octokit
+  let githubRepos: { id: number; name: string; fullName: string; owner: string; private: boolean; defaultBranch?: string }[] = [];
+  let fetchError: string | null = null;
+
   try {
-    const octokit = new Octokit({ auth: account.access_token });
-    const response = await octokit.rest.repos.listForAuthenticatedUser({
-      sort: "updated",
-      per_page: 100,
+    const account = await prisma.account.findFirst({
+      where: { userId, provider: "github" },
     });
-    githubRepos = response.data.map(r => ({
-      id: r.id,
-      name: r.name,
-      fullName: r.full_name,
-      owner: r.owner.login,
-      url: r.html_url,
-      private: r.private,
-    }));
-  } catch (error: any) {
+
+    if (account?.access_token) {
+      const octokit = new Octokit({ auth: account.access_token });
+      const { data } = await octokit.rest.repos.listForAuthenticatedUser({
+        sort: "updated",
+        per_page: 100,
+      });
+      githubRepos = data.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        fullName: r.full_name,
+        owner: r.owner.login,
+        private: r.private,
+        defaultBranch: r.default_branch,
+      }));
+    }
+  } catch (error) {
     console.error("Failed to fetch repositories from GitHub:", error);
-    fetchError = error.message || "Failed to load GitHub repositories.";
+    fetchError = "Could not load repositories from GitHub. Please try signing out and back in.";
   }
-
-  // 4. Fetch the webhook event logs for connected repos
-  const connectedRepoIds = dbConnectedRepos.map(r => r.id);
-  const events = await prisma.webhookEvent.findMany({
-    where: {
-      repoId: { in: connectedRepoIds },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-
-  // Convert Date types to ISO string to pass safely to Client Component
-  const serializedEvents = events.map(e => ({
-    ...e,
-    createdAt: e.createdAt.toISOString(),
-    updatedAt: e.updatedAt.toISOString(),
-    nextRetryAt: e.nextRetryAt ? e.nextRetryAt.toISOString() : null,
-  }));
-
-  const serializedConnectedRepos = dbConnectedRepos.map(r => ({
-    ...r,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-  }));
 
   return (
     <DashboardClient
       user={{
-        name: session.user.name || "User",
-        email: session.user.email || "",
-        image: session.user.image || "",
+        name: session.user.name ?? "Unknown",
+        email: session.user.email ?? "",
+        image: session.user.image ?? "",
       }}
       githubRepos={githubRepos}
-      connectedRepos={serializedConnectedRepos}
-      initialEvents={serializedEvents}
+      connectedRepos={connectedRepos.map(r => ({
+        id: r.id,
+        userId: r.userId,
+        repoFullName: r.repoFullName,
+        webhookId: r.webhookId,
+        createdAt: r.createdAt.toISOString(),
+      }))}
+      initialEvents={initialEvents.map(e => ({
+        id: e.id,
+        repoId: e.repoId,
+        deliveryId: e.deliveryId,
+        eventType: e.eventType,
+        payload: e.payload,
+        status: e.status,
+        error: e.error,
+        retryCount: e.retryCount,
+        nextRetryAt: e.nextRetryAt?.toISOString() ?? null,
+        processingMs: e.processingMs,
+        aiSummary: e.aiSummary,
+        aiLabel: e.aiLabel,
+        aiPriority: e.aiPriority,
+        aiReasoning: e.aiReasoning,
+        aiConfidence: e.aiConfidence,
+        createdAt: e.createdAt.toISOString(),
+      }))}
       fetchError={fetchError}
     />
   );

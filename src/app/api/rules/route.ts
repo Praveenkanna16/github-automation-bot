@@ -2,6 +2,20 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { z } from "zod";
+
+const ruleSchema = z.object({
+  id: z.string().optional(),
+  repoId: z.string(),
+  matchField: z.enum(["title", "body", "branch", "author", "aiLabel"]),
+  matchValue: z.string().min(1, "Match keyword is required"),
+  eventType: z.enum(["all", "issues", "pull_request", "push"]),
+  action: z.enum(["label", "comment", "slack", "all"]),
+  label: z.string().nullable().optional(),
+  comment: z.string().nullable().optional(),
+  slackMessageTemplate: z.string().nullable().optional(),
+  enabled: z.boolean().optional(),
+});
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -41,11 +55,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { repoId, matchField, matchValue, action, label, comment, slackMessageTemplate } = await req.json();
-
-    if (!repoId || !matchField || !matchValue || !action) {
-      return NextResponse.json({ error: "Missing required rule parameters" }, { status: 400 });
+    const body = await req.json();
+    const result = ruleSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: result.error.issues[0].message }, { status: 400 });
     }
+
+    const { repoId, matchField, matchValue, eventType, action, label, comment, slackMessageTemplate } = result.data;
 
     // Verify repository ownership
     const repo = await prisma.connectedRepo.findFirst({
@@ -65,10 +81,12 @@ export async function POST(req: Request) {
         repoId,
         matchField,
         matchValue,
+        eventType,
         action,
         label,
         comment,
         slackMessageTemplate,
+        enabled: true,
       },
     });
 
@@ -85,10 +103,16 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, matchField, matchValue, action, label, comment, slackMessageTemplate } = await req.json();
+    const body = await req.json();
+    const result = ruleSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: result.error.issues[0].message }, { status: 400 });
+    }
 
-    if (!id || !matchField || !matchValue || !action) {
-      return NextResponse.json({ error: "Missing required rule parameters" }, { status: 400 });
+    const { id, matchField, matchValue, eventType, action, label, comment, slackMessageTemplate, enabled } = result.data;
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing rule ID parameter" }, { status: 400 });
     }
 
     const rule = await prisma.rule.update({
@@ -99,10 +123,12 @@ export async function PUT(req: Request) {
       data: {
         matchField,
         matchValue,
+        eventType,
         action,
         label,
         comment,
         slackMessageTemplate,
+        enabled: enabled !== undefined ? enabled : true,
       },
     });
 

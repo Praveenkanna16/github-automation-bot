@@ -4,7 +4,26 @@ import { prisma } from "@/lib/db";
 import { processWebhookEvent } from "@/lib/webhookProcessor";
 import { NextResponse } from "next/server";
 
+// Simple transient in-memory rate limiting map
+const ipCache = new Map<string, { count: number; resetAt: number }>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const cached = ipCache.get(ip);
+  if (!cached || now > cached.resetAt) {
+    ipCache.set(ip, { count: 1, resetAt: now + 60000 });
+    return false;
+  }
+  cached.count += 1;
+  return cached.count > 60; // Max 60 requests per minute
+}
+
 export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  if (isRateLimited(ip)) {
+    return new Response("Too Many Requests", { status: 429 });
+  }
+
   const signature = req.headers.get("x-hub-signature-256");
   const deliveryId = req.headers.get("x-github-delivery");
   const eventType = req.headers.get("x-github-event");
