@@ -137,7 +137,7 @@ export default function DashboardClient({
     fetchRepoEvents();
   }, [selectedRepoId]);
 
-  // Periodic events logging polling (every 10 seconds if tab is logs)
+  // Periodic events logging polling (every 5 seconds if tab is logs)
   useEffect(() => {
     if (!selectedRepoId || activeTab !== "logs") return;
 
@@ -151,7 +151,7 @@ export default function DashboardClient({
       } catch (err) {
         console.error("Error refreshing events:", err);
       }
-    }, 10000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [selectedRepoId, activeTab]);
@@ -316,6 +316,10 @@ export default function DashboardClient({
         <aside className={styles.sidebar}>
           <div className={styles.connectSection}>
             <h2 className={styles.sectionTitle}>Connect Repository</h2>
+            <div style={{ fontSize: "11px", color: "#a1a1aa", marginTop: "-6px", marginBottom: "12px", lineHeight: "1.4" }}>
+              1. Choose an available repository below.<br/>
+              2. Click <strong>Connect Repo</strong> to verify.
+            </div>
             {fetchError ? (
               <div style={{ fontSize: "12px", color: "#f87171", marginBottom: "8px" }}>{fetchError}</div>
             ) : unconnectedGithubRepos.length === 0 ? (
@@ -396,6 +400,26 @@ export default function DashboardClient({
             <div className={styles.dashboardGrid}>
               <div className={styles.repoHeader}>
                 <h1 className={styles.repoTitle}>{activeRepo?.repoFullName}</h1>
+                
+                {/* Webhook Health Status Indicator */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", marginBottom: "16px" }}>
+                  {events.length > 0 ? (
+                    <>
+                      <span style={{ display: "inline-block", width: "10px", height: "10px", borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981" }}></span>
+                      <span style={{ fontSize: "13px", color: "#a1a1aa" }}>
+                        Webhook Active (Last event: {new Date(events[0].createdAt).toLocaleString()})
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ display: "inline-block", width: "10px", height: "10px", borderRadius: "50%", background: "#fbbf24", boxShadow: "0 0 8px #fbbf24" }}></span>
+                      <span style={{ fontSize: "13px", color: "#a1a1aa" }}>
+                        Awaiting Webhook Ingestion Delivery
+                      </span>
+                    </>
+                  )}
+                </div>
+
                 <div className={styles.tabs}>
                   <button
                     className={`${styles.tab} ${activeTab === "rules" ? styles.tabActive : ""}`}
@@ -409,6 +433,36 @@ export default function DashboardClient({
                   >
                     Ingested Event Logs
                   </button>
+                </div>
+              </div>
+
+              {/* Summary Stats Row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+                <div className={styles.card} style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "4px", marginBottom: "0" }}>
+                  <span style={{ fontSize: "12px", color: "#a1a1aa", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.05em" }}>Connected Repos</span>
+                  <span style={{ fontSize: "28px", fontWeight: "700", color: "#fff" }}>{connectedRepos.length}</span>
+                </div>
+                <div className={styles.card} style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "4px", marginBottom: "0" }}>
+                  <span style={{ fontSize: "12px", color: "#a1a1aa", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.05em" }}>Events Ingested</span>
+                  <span style={{ fontSize: "28px", fontWeight: "700", color: "#fff" }}>{events.length}</span>
+                </div>
+                <div className={styles.card} style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "4px", marginBottom: "0" }}>
+                  <span style={{ fontSize: "12px", color: "#a1a1aa", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.05em" }}>Active Rules</span>
+                  <span style={{ fontSize: "28px", fontWeight: "700", color: "#fff" }}>{rules.length}</span>
+                </div>
+                <div className={styles.card} style={{ 
+                  padding: "16px", 
+                  display: "flex", 
+                  flexDirection: "column", 
+                  gap: "4px", 
+                  marginBottom: "0",
+                  background: events.some(e => e.status === "failed") ? "rgba(239, 68, 68, 0.08)" : undefined,
+                  borderColor: events.some(e => e.status === "failed") ? "rgba(239, 68, 68, 0.2)" : undefined
+                }}>
+                  <span style={{ fontSize: "12px", color: events.some(e => e.status === "failed") ? "#f87171" : "#a1a1aa", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.05em" }}>Failed Deliveries</span>
+                  <span style={{ fontSize: "28px", fontWeight: "700", color: events.some(e => e.status === "failed") ? "#ef4444" : "#fff" }}>
+                    {events.filter(e => e.status === "failed").length}
+                  </span>
                 </div>
               </div>
 

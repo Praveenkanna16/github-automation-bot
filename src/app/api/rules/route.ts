@@ -10,6 +10,10 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
+  // Health check endpoint - return simple status without DB access
+  if (searchParams.get('health') === '1') {
+    return NextResponse.json({ status: 'ok' });
+  }
   const repoId = searchParams.get("repoId");
 
   if (!repoId) {
@@ -41,6 +45,18 @@ export async function POST(req: Request) {
 
     if (!repoId || !matchField || !matchValue || !action) {
       return NextResponse.json({ error: "Missing required rule parameters" }, { status: 400 });
+    }
+
+    // Verify repository ownership
+    const repo = await prisma.connectedRepo.findFirst({
+      where: {
+        id: repoId,
+        userId: session.user.id,
+      },
+    });
+
+    if (!repo) {
+      return NextResponse.json({ error: "Repository not connected or unauthorized" }, { status: 403 });
     }
 
     const rule = await prisma.rule.create({

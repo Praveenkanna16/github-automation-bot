@@ -5,7 +5,6 @@ import { processWebhookEvent } from "@/lib/webhookProcessor";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  console.log("[WEBHOOK ROUTE] env DATABASE_URL starts:", process.env.DATABASE_URL?.substring(0, 15), "len =", process.env.DATABASE_URL?.length);
   const signature = req.headers.get("x-hub-signature-256");
   const deliveryId = req.headers.get("x-github-delivery");
   const eventType = req.headers.get("x-github-event");
@@ -34,15 +33,22 @@ export async function POST(req: Request) {
     return new Response("Unauthorized Signature", { status: 401 });
   }
 
+  // 2. Parse payload — return 400 for malformed JSON (not 500)
+  let payload: any;
   try {
-    const payload = JSON.parse(bodyText);
+    payload = JSON.parse(bodyText);
+  } catch {
+    return new Response("Invalid JSON payload", { status: 400 });
+  }
+
+  try {
     const repoFullName = payload.repository?.full_name;
 
     if (!repoFullName) {
       return NextResponse.json({ message: "No repository name in payload" }, { status: 200 });
     }
 
-    // 2. Identify the connected repository records
+    // 3. Identify the connected repository records
     const connectedRepo = await prisma.connectedRepo.findFirst({
       where: { repoFullName },
     });
@@ -51,7 +57,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: `Repository ${repoFullName} is not connected to this application.` }, { status: 200 });
     }
 
-    // 3. Idempotency check: Reject duplicate deliveries
+    // 4. Idempotency check: Reject duplicate deliveries
     const existingEvent = await prisma.webhookEvent.findUnique({
       where: { deliveryId },
     });
@@ -60,7 +66,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: `Event delivery ${deliveryId} already processed (Idempotent).` }, { status: 200 });
     }
 
-    // 4. Durability: Persist raw event to DB in 'received' state
+    // 5. Durability: Persist raw event to DB in 'received' state
     const newEvent = await prisma.webhookEvent.create({
       data: {
         repoId: connectedRepo.id,
@@ -71,7 +77,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // 5. Downstream Execution (wrapped in a try-catch to keep it durable and prevent returning 500 to GitHub)
+    // 6. Downstream Execution (wrapped in a try-catch to keep it durable and prevent returning 500 to GitHub)
     try {
       await processWebhookEvent(newEvent.id);
     } catch (procError) {
@@ -86,3 +92,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || "Failed to ingest webhook" }, { status: 500 });
   }
 }
+

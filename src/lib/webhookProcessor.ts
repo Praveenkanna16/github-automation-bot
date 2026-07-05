@@ -52,21 +52,29 @@ export async function processWebhookEvent(eventId: string): Promise<void> {
 Title: ${title}
 Body: ${body}`;
 
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{ text: prompt }]
-              }],
-              generationConfig: {
-                responseMimeType: "application/json"
-              }
-            })
-          }
-        );
+        const geminiController = new AbortController();
+        const geminiTimeout = setTimeout(() => geminiController.abort(), 8000);
+        let geminiRes;
+        try {
+          geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: geminiController.signal,
+              body: JSON.stringify({
+                contents: [{
+                  parts: [{ text: prompt }]
+                }],
+                generationConfig: {
+                  responseMimeType: "application/json"
+                }
+              })
+            }
+          );
+        } finally {
+          clearTimeout(geminiTimeout);
+        }
 
         if (geminiRes.ok) {
           const resData = await geminiRes.json();
@@ -162,11 +170,19 @@ Body: ${body}`;
         }
 
         logStep(event.deliveryId, eventType, "processing", "Sending POST request to Slack incoming webhook");
-        const slackRes = await fetch(slackUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: slackText }),
-        });
+        const slackController = new AbortController();
+        const slackTimeout = setTimeout(() => slackController.abort(), 8000);
+        let slackRes;
+        try {
+          slackRes = await fetch(slackUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: slackController.signal,
+            body: JSON.stringify({ text: slackText }),
+          });
+        } finally {
+          clearTimeout(slackTimeout);
+        }
 
         if (!slackRes.ok) {
           const resText = await slackRes.text();

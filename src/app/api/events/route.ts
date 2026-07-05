@@ -10,11 +10,18 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
+  // Health check endpoint - return simple status without DB access
+  if (searchParams.get('health') === '1') {
+    return NextResponse.json({ status: 'ok' });
+  }
   const repoId = searchParams.get("repoId");
 
   try {
     const events = await prisma.webhookEvent.findMany({
-      where: repoId ? { repoId } : {
+      where: repoId ? {
+        repoId,
+        repo: { userId: session.user.id }
+      } : {
         repo: { userId: session.user.id }
       },
       orderBy: { createdAt: "desc" },
