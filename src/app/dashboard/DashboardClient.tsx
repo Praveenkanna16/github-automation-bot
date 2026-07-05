@@ -1079,17 +1079,35 @@ export default function DashboardClient({
                             className={`${styles.ruleCard} ${!rule.enabled ? styles.ruleCardDisabled : ""}`}
                           >
                             <div className={styles.ruleCardBody}>
-                              <p className={styles.ruleConditionText}>
-                                If <span className={styles.ruleConditionCode}>{rule.matchField}</span>{" "}
-                                contains <span className={styles.ruleConditionCode}>"{rule.matchValue}"</span>
-                                {rule.eventType !== "all" && (
-                                  <> on <span className={styles.ruleConditionCode}>{rule.eventType}</span></>
-                                )}
-                              </p>
-                              <p className={styles.ruleActionText}>
-                                Action: {rule.action.toUpperCase()}{rule.label ? ` · Label: "${rule.label}"` : ""}
-                                {!rule.enabled && " · Disabled"}
-                              </p>
+                              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-4)" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span style={{ background: "var(--accent-subtle)", color: "var(--accent-text)", border: "1px solid var(--accent-border)", fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "var(--radius-sm)", textTransform: "uppercase", letterSpacing: "0.02em" }}>IF</span>
+                                  <span style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
+                                    {rule.matchField === "title" ? "Issue/PR Title" :
+                                     rule.matchField === "body" ? "Issue/PR Body" :
+                                     rule.matchField === "branch" ? "Git Branch" :
+                                     rule.matchField === "author" ? "Event Creator" : "AI Suggested Category"}
+                                  </span>
+                                  <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>contains</span>
+                                  <span className={styles.ruleConditionCode}>"{rule.matchValue}"</span>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span style={{ background: "var(--success-subtle)", color: "var(--success-text)", border: "1px solid var(--success-border)", fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "var(--radius-sm)", textTransform: "uppercase", letterSpacing: "0.02em" }}>THEN</span>
+                                  <span style={{ fontSize: "var(--text-sm)", color: "var(--text-primary)", fontWeight: 500 }}>
+                                    {rule.action === "label" ? `Apply label "${rule.label}"` :
+                                     rule.action === "comment" ? "Post issue comment" :
+                                     rule.action === "slack" ? "Send Slack alert" :
+                                     `Apply label "${rule.label}" + post comment + alert Slack`}
+                                  </span>
+                                </div>
+                              </div>
+                              {rule.eventType !== "all" && (
+                                <div style={{ marginTop: 8, fontSize: "var(--text-xs)", color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 4 }}>
+                                  <span>Scope:</span>
+                                  <span className={styles.ruleConditionCode}>{rule.eventType === "pull_request" ? "Pull Requests" : rule.eventType === "issues" ? "Issues" : rule.eventType}</span>
+                                </div>
+                              )}
                             </div>
                             <div className={styles.ruleCardActions}>
                               <Toggle
