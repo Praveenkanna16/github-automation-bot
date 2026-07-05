@@ -3,9 +3,10 @@ import { processWebhookEvent } from "@/lib/webhookProcessor";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
-  // Guard the cron endpoint using CRON_SECRET if configured
   const authHeader = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  
+  if (!cronSecret || cronSecret.trim() === "" || authHeader !== `Bearer ${cronSecret}`) {
     return new Response("Unauthorized", { status: 401 });
   }
 
